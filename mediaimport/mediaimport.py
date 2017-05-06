@@ -16,6 +16,7 @@ from aqt import editor
 from anki import notes
 
 from mediaimport import dialog
+import re
 
 # Support the same media types as the Editor
 AUDIO = editor.audio
@@ -41,54 +42,57 @@ def doMediaImport():
     # Get the MediaImport deck id (auto-created if it doesn't exist)
     did = mw.col.decks.id('MediaImport')
     # We won't walk the path - we only want the top-level files.
-    (root, dirs, files) = next(os.walk(path))
-    mw.progress.start(max=len(files), parent=mw, immediate=True)
+    (topRoot, topDirs, topFiles) = next(os.walk(path))
+    mw.progress.start(max=len(topFiles), parent=mw, immediate=True)
     newCount = 0
     failure = False
-    for i, fileName in enumerate(files):
-        note = notes.Note(mw.col, model)
-        note.model()['did'] = did
-        mediaName, ext = os.path.splitext(fileName)
-        ext = ext[1:].lower()
-        path = os.path.join(root, fileName)
-        if ext is None or ext not in AUDIO+IMAGE:
-            # Skip files with no extension and non-media files
-            continue
-        # Add the file to the media collection and get its name
-        fname = mw.col.media.addFile(path)
-        # Now we populate each field according to the mapping selected
-        for (field, actionIdx, special) in fieldList:
-            action = ACTIONS[actionIdx]
-            if action == '':
+    for curDir in topDirs:
+        (root,dirs,files) = next(os.walk(unicode(os.path.join(topRoot,curDir))))
+        for i, fileName in enumerate(files):
+            note = notes.Note(mw.col, model)
+            note.model()['did'] = did
+            mediaName, ext = os.path.splitext(fileName)
+            ext = ext[1:].lower()
+            path = os.path.join(root, fileName)
+            note.tags.append(re.sub(r'.*/','',root))
+            if ext is None or ext not in AUDIO+IMAGE:
+                # Skip files with no extension and non-media files
                 continue
-            elif action == "Media":
-                if ext in AUDIO:
-                     data = u'[sound:%s]' % fname
-                elif ext in IMAGE:
-                     data = u'<img src="%s">' % fname
-            elif action == "File Name":
-                data = mediaName
-            elif action == "File Name (full)":
-                data = fileName
-            elif action == "Extension":
-                data = ext
-            elif action == 'Extension-1':
-                data = os.path.splitext(mediaName)[1][1:]
-            elif action == "Sequence":
-                data = str(i)
+            # Add the file to the media collection and get its name
+            fname = mw.col.media.addFile(path)
+            # Now we populate each field according to the mapping selected
+            for (field, actionIdx, special) in fieldList:
+                action = ACTIONS[actionIdx]
+                if action == '':
+                    continue
+                elif action == "Media":
+                    if ext in AUDIO:
+                         data = u'[sound:%s]' % fname
+                    elif ext in IMAGE:
+                         data = u'<img src="%s">' % fname
+                elif action == "File Name":
+                    data = mediaName
+                elif action == "File Name (full)":
+                    data = fileName
+                elif action == "Extension":
+                    data = ext
+                elif action == 'Extension-1':
+                    data = os.path.splitext(mediaName)[1][1:]
+                elif action == "Sequence":
+                    data = str(i)
 
-            if special and field == "Tags":
-                note.tags.append(data)
-            else:
-                note[field] = data
+                if special and field == "Tags":
+                    note.tags.append(data)
+                else:
+                    note[field] = data
 
-        if not mw.col.addNote(note):
-            # No cards were generated - probably bad template. No point
-            # trying to import anymore.
-            failure = True
-            break
-        newCount += 1
-        mw.progress.update(value=i)
+            if not mw.col.addNote(note):
+                # No cards were generated - probably bad template. No point
+                # trying to import anymore.
+                failure = True
+                break
+            newCount += 1
+            mw.progress.update(value=i)
     mw.progress.finish()
     mw.deckBrowser.refresh()
     if failure:
